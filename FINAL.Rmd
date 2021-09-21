@@ -1,0 +1,156 @@
+---
+title: "STAT 209: Final"
+output:
+  html_document:
+    css: ../lab.css
+    highlight: pygments
+    theme: cerulean
+    code_folding: hide
+    toc: true
+    toc_float: true
+  pdf_document: default
+---
+
+```{r setup, include = FALSE}
+library(tidyverse)
+theme_set(theme_bw()) # change theme for ggplot2
+knitr::opts_chunk$set(
+  tidy    = FALSE,       # display code as typed
+  size    = "small",     # slightly smaller font for code
+  message = FALSE)  # suppresses some unwanted output
+```
+
+# Introduction
+
+You've seen it thousands of times -- someone in a tv show or movie stands on the side of the street with their hands up and somewhat magically a yellow taxi appears to whisk them to their next destination. In a city that is increasingly facing gentrification, industrialization, and has the highest population density of any city in the United States, New York residents must learn to get around the city efficiently. With traffic, expensive parking, and the liability that owning a car in the city presents, I will be using the NYCTaxi database to track taxi usage. I will combine this data with news of the city during the sample time frame, how tourism may affect taxi usage, and if a rise in the number of residents affects the ability to easily travel around the city.
+
+```{r, warning=FALSE}
+library(tidyverse)
+library(dbplyr)  ## Note the 'b'; this is not dplyr
+library(mdsr)    ## Package for our book
+library(RMySQL)  ## Standard R/SQL interface package
+setwd("~/stat209")
+db <- dbConnect_scidb("nyctaxi")
+```
+
+
+```{r}
+taxis <- tbl(db, "yellow_old")
+```
+
+```{sql connection=db}
+SELECT 
+  *
+  FROM yellow_old
+  LIMIT 0, 1;
+```
+
+
+```{sql connection=db}
+SELECT 
+  str_to_date(pickup_datetime, '%Y-%m-%d') AS pickupdate,
+  str_to_date(dropoff_datetime, '%Y-%m-%d') AS dropoffdate,
+  pickup_longitude,pickup_latitude,dropoff_longitude,
+  dropoff_latitude,fare_amount,tip_amount,total_amount
+  FROM yellow_old
+  WHERE pickup_latitude > 0 
+    AND dropoff_latitude > 0
+  GROUP BY pickupdate
+  HAVING total_amount > 0;
+```
+```{r}
+query <- 
+  "SELECT 
+  str_to_date(pickup_datetime, '%Y-%m-%d') AS pickupdate,
+  str_to_date(dropoff_datetime, '%Y-%m-%d') AS dropoffdate,
+  pickup_longitude,pickup_latitude,dropoff_longitude,
+  dropoff_latitude,fare_amount,tip_amount,total_amount,
+  SUM(fare_amount) AS total_revenue,
+  COUNT(pickup_datetime) AS num_trips
+  FROM yellow_old
+  WHERE pickup_latitude > 0 
+    AND dropoff_latitude > 0
+  GROUP BY pickupdate
+  HAVING total_amount > 0;"
+```
+
+```{r}
+delays <- db %>% 
+  dbGetQuery(query) %>% 
+  collect()
+
+delays
+```
+#Highest Earning Days
+First, I will look at the days in which taxi drivers got the most revenue. The graph below shows that during this month, the total fare amounts were quite variable day to day. The disparity of revenue per day is also quite stark. This data could potentially be used for independent contractors to optimize their time while working -- potentially working a different job during less popular days.
+
+The plot clearly shows that the days of the week that are typically most popular in terms of taxi usage are Thursday, Friday, and Saturday. The most obvious explanation for this is that during these days nightlife is most active in the city. This may increase the number of taxis trips a single person typically takes in a day due to multiple destinations. Another explanation is these days may be popular for tourism.
+
+In conclusion, the most money spent and to be made via taxi fares occur from Thursday-Saturday. Taxi driver can optimize their time by planning their schedules around these days and those using taxis can potentially avoid using taxis during these days as their popularity may increase traffic and surcharges.
+
+```{r}
+library(RColorBrewer)
+library(lubridate)
+```
+
+
+```{r}
+avg = delays$total_revenue
+
+delays <- delays %>%
+  mutate(day_of_week = wday(pickupdate, label = TRUE))  %>%
+  group_by(day_of_week)
+
+trip_plot <- delays %>%
+  ggplot(aes(x = pickupdate, y = total_revenue/1000000, color = day_of_week)) +
+  geom_point() +
+  geom_hline(yintercept = mean(avg/1000000)) + 
+  labs(title = "Highest Earning Days for Taxi Drivers") +
+  xlab("Date") +
+  ylab("Total Revenue (in millions)") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+trip_plot
+```
+
+```{r}
+library(dplyr)
+library(geosphere)
+```
+
+# How Total Distance Affects Trip Numbers
+
+Looking at the days that had the most revenue based on the previous graph. I wanted to see if there was any connection to the length of the trips taken on these days. March 7th and 14th were where the highest earning days while the 3rd and 24th were the least.
+
+The graph is able to account for the impact number of trips may have had on these values. The graph shows that March 7th and 14th both had high levels of both distance and number of trips.
+
+```{r}
+delays2 <- delays %>%
+  rowwise() %>%
+  mutate(distance = distHaversine(c(pickup_longitude, pickup_latitude), 
+                                  c(dropoff_longitude, dropoff_latitude))) 
+
+distance_plot <- delays2 %>%
+  ggplot(aes(x= pickupdate, y = num_trips/1000, size = distance/1000, color = "bcabff")) +
+  geom_point() +
+  labs(title = "How Total Distance Affects Trip Numbers") +
+  xlab("Date") +
+  ylab("Number of Trips (in thousands)") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  guides(colour = guide_colourbar(reverse = TRUE))
+
+distance_plot 
+```
+
+```{r}
+tip_percentage <- delays %>%
+  rowwise() %>%
+  mutate(distance = distHaversine(c(pickup_longitude, pickup_latitude), 
+                                  c(dropoff_longitude, dropoff_latitude))) %>%
+  mutate(tip_percent = (tip_amount/fare_amount) * 100) %>%
+  ggplot(aes(x= tip_percent, y = distance)) +
+  geom_point() +
+  geom_smooth()
+
+tip_percentage
+```
