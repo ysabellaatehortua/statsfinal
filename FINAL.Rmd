@@ -51,7 +51,7 @@ SELECT
   str_to_date(pickup_datetime, '%Y-%m-%d') AS pickupdate,
   str_to_date(dropoff_datetime, '%Y-%m-%d') AS dropoffdate,
   pickup_longitude,pickup_latitude,dropoff_longitude,
-  dropoff_latitude,fare_amount,tip_amount,total_amount
+  dropoff_latitude,fare_amount,tip_amount,vendor_id,passenger_count,total_amount
   FROM yellow_old
   WHERE pickup_latitude > 0 
     AND dropoff_latitude > 0
@@ -64,7 +64,7 @@ query <-
   str_to_date(pickup_datetime, '%Y-%m-%d') AS pickupdate,
   str_to_date(dropoff_datetime, '%Y-%m-%d') AS dropoffdate,
   pickup_longitude,pickup_latitude,dropoff_longitude,
-  dropoff_latitude,fare_amount,tip_amount,total_amount,
+  dropoff_latitude,fare_amount,vendor_id,tip_amount,total_amount,passenger_count,
   SUM(fare_amount) AS total_revenue,
   COUNT(pickup_datetime) AS num_trips
   FROM yellow_old
@@ -111,6 +111,16 @@ trip_plot <- delays %>%
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 trip_plot
+
+p <- delays %>%
+  mutate(wday = wday(pickupdate, label = TRUE, week_start = 1)) %>%
+  group_by(wday, vendor_id) %>%
+  count() %>%
+  ggplot(aes(wday, n, colour = vendor_id)) +
+  geom_point(size = 4) +
+  labs(x = "Day of the week", y = "Total number of pickups") +
+  theme(legend.position = "none")
+p
 ```
 
 ```{r}
@@ -122,7 +132,7 @@ library(geosphere)
 
 Looking at the days that had the most revenue based on the previous graph. I wanted to see if there was any connection to the length of the trips taken on these days. March 7th and 14th were where the highest earning days while the 3rd and 24th were the least.
 
-The graph is able to account for the impact number of trips may have had on these values. The graph shows that March 7th and 14th both had high levels of both distance and number of trips.
+The graph is able to account for the impact number of trips may have had on these values. The graph shows that March 7th and 14th both had high levels of both distance and number of trips. March 3rd and 24th however, both had low number of trips. The graph shows that though there may be a positive correlation between total distance driven and revenue, the most significant factor in revenue is the number of trips a driver has in a day. I believe this may be due to the fact that taxis often have a flat fee for driving so smaller distanced trips combined with many trips would increase the total pay for that day. 
 
 ```{r}
 delays2 <- delays %>%
@@ -142,6 +152,9 @@ distance_plot <- delays2 %>%
 distance_plot 
 ```
 
+# How Distance Affects Tip Percentage
+
+I wanted to see if there was a correlation between distance and the amount that a person tips. The data shows that there isn't a strong correlation between these two variables -- but allows us some insight into trends of tipping. It seems that no matter the distance a driver goes, people either tip nothing or tip somewhere in the 20-26% range. Following the past graph, we can conclude that shorter distanced rides again add to the amount of revenue a driver makes in the day when compared to farther distances both due to the potential of flat fees as well as generousity with tips. 
 ```{r}
 tip_percentage <- delays %>%
   rowwise() %>%
@@ -154,3 +167,16 @@ tip_percentage <- delays %>%
 
 tip_percentage
 ```
+# Discussion
+Through this study, I have found that the way for both drivers and riders to be most effective is by paying attention to trends in taxi usage. Drivers tend to be busier during the weekends -- so riders can avoid traffic by using different modes of transportation. Drivers can use this information to see when they are in demand and optimize their time by working more on the weekends and increasing their surcharge. Because shorter trips are often more costly per/minute than longer distances -- it may be more economical for riders to carpool in taxis to their destination. 
+
+Because the dataset is so large -- there are many different angles that further analysis could expand on. Knowing the coordinates of JFK and La Guardia may allow us to see how many people are travelling to the airport, combining this data with one that includes the duration of the trip in time would allow for more information to be told, and plotting more months would allow us to see how these trends change seasonally. 
+
+Though I believe that there is increased taxi usage during the weekend due to nightlife -- this is purely conjecture. More analysis could look to see the most popular times of day that people ride in these taxis. It is also conjecture that many shorter rides is more financial beneficial to drivers due to the fact that the distances in the data were aggregated. Thus -- more analysis is needed to cement this as true.
+
+# Methodology
+The first two graphs highlight days of the week by coding them with different colors -- this allows readers to clearly see the trend lines that are present. I decided to add a horizontal line depicting the median in the first graph to show readers the disparity between the lower and upper half of days.
+
+The third graph uses size to code total distance driven to signal to readers clearly how the scale of busier days vary from those slower days. For the first and 3rd graph -- I decided to keep all the dates despite possibly overload of information to showcase more of the data points and potentially clarify the hypotheses. If I were to repeat this, I would remove the years from the labels.
+
+The 4th graph uses a smooth function to show that the line of best fit is sporadic. This highlights that there is little correlation between tip percents and distance driven which draws the eye to the clumps of dots at 0% and 20-26%.
